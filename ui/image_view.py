@@ -46,6 +46,8 @@ class ImageView(QWidget):
         self.tool = C.TOOL_WL
         self.target_layer = C.SMA
         self.brush_mm = 8.0
+        self.brush_soft = False         # 软边笔刷
+        self.show_gray = True           # False=只看叠加（隐藏灰度）
         self.brush_limit_hu = True      # 画笔/橡皮是否按 HU 范围限制
         self.hu_lo, self.hu_hi = C.LAYER_HU[C.SMA]
         self.grow_radius_mm = 24.0
@@ -156,6 +158,13 @@ class ImageView(QWidget):
         self.brush_mm = float(mm)
         self.update()
 
+    def set_brush_soft(self, flag):
+        self.brush_soft = bool(flag)
+
+    def set_show_gray(self, flag):
+        self.show_gray = bool(flag)
+        self.update()
+
     def set_brush_limit_hu(self, flag):
         self.brush_limit_hu = bool(flag)
 
@@ -185,7 +194,8 @@ class ImageView(QWidget):
 
         h, w = self.case.shape
         target = QRectF(self._ox, self._oy, w * self._sx, h * self._sy)
-        p.drawImage(target, self._gray_qimg)
+        if self.show_gray:
+            p.drawImage(target, self._gray_qimg)
         p.drawImage(target, self._ov_qimg)
 
         # 画笔/橡皮光标圆
@@ -352,11 +362,12 @@ class ImageView(QWidget):
 
     def _paint_disk(self, col, row, erase):
         r = max(0.5, self.brush_mm / self.case.px_mm)
+        soft = 0.4 if self.brush_soft else 0.0
         if erase:
-            editing.erase_disk(self.case.label, row, col, r, self._stroke_allow)
+            editing.erase_disk(self.case.label, row, col, r, self._stroke_allow, soft)
         else:
             editing.paint_disk(self.case.label, row, col, r, self.target_layer,
-                               self._stroke_allow)
+                               self._stroke_allow, soft)
         self.rebuild_overlay()
         self.update()
         self.edited.emit()
@@ -369,15 +380,16 @@ class ImageView(QWidget):
         dist = math.hypot(col - lc[0], row - lc[1])
         steps = max(1, int(dist))
         r = max(0.5, self.brush_mm / self.case.px_mm)
+        soft = 0.4 if self.brush_soft else 0.0
         for i in range(steps + 1):
             t = i / steps
             c = int(round(lc[0] + (col - lc[0]) * t))
             rr = int(round(lc[1] + (row - lc[1]) * t))
             if erase:
-                editing.erase_disk(self.case.label, rr, c, r, self._stroke_allow)
+                editing.erase_disk(self.case.label, rr, c, r, self._stroke_allow, soft)
             else:
                 editing.paint_disk(self.case.label, rr, c, r, self.target_layer,
-                                   self._stroke_allow)
+                                   self._stroke_allow, soft)
         self._last_paint = (col, row)
         self.rebuild_overlay()
         self.update()

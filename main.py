@@ -45,8 +45,14 @@ def main():
     settings.apply_colors()   # 载入用户保存的图层颜色
     _install_excepthook()
 
-    win = MainWindow()
-    win.show()
+    try:
+        win = MainWindow()
+        win.show()
+    except Exception as e:  # noqa: BLE001
+        import traceback
+        QMessageBox.critical(None, "启动失败",
+                             "程序初始化时发生错误：\n\n" + traceback.format_exc()[-3000:])
+        sys.exit(1)
     sys.exit(app.exec())
 
 

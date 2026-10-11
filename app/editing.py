@@ -4,28 +4,54 @@ import numpy as np
 from scipy import ndimage
 
 
-def disk_mask(shape, cy: int, cx: int, r: float) -> np.ndarray:
-    """布尔圆盘掩膜，半径 r（图像像素）。"""
+# 8×8 Bayer 有序抖动矩阵（值域 [0,1)），用于软边笔刷的羽化边缘
+_BAYER8 = (np.array([
+    [0, 32, 8, 40, 2, 34, 10, 42],
+    [48, 16, 56, 24, 50, 18, 58, 26],
+    [12, 44, 4, 36, 14, 46, 6, 38],
+    [60, 28, 52, 20, 62, 30, 54, 22],
+    [3, 35, 11, 43, 1, 33, 9, 41],
+    [51, 19, 59, 27, 49, 17, 57, 25],
+    [15, 47, 7, 39, 13, 45, 5, 37],
+    [63, 31, 55, 23, 61, 29, 53, 21],
+], dtype=np.float32) + 0.5) / 64.0
+
+
+def disk_mask(shape, cy: int, cx: int, r: float, soft: float = 0.0) -> np.ndarray:
+    """圆盘掩膜，半径 r（图像像素）。
+
+    soft=0 为硬边（直径内全选）；soft>0 为软边，边缘处按覆盖度做有序抖动羽化，
+    视觉上边界更柔和（覆盖度从内圈 1 线性降到外圈 0，用 Bayer 矩阵边缘阈值化）。
+    """
     yy, xx = np.ogrid[:shape[0], :shape[1]]
-    return (yy - cy) ** 2 + (xx - cx) ** 2 <= r * r
+    d2 = (yy - cy) ** 2 + (xx - cx) ** 2
+    if soft <= 0.0:
+        return d2 <= r * r
+    r = max(1e-6, float(r))
+    d = np.sqrt(d2)
+    inner = r * (1.0 - float(soft))
+    cov = np.clip((r - d) / max(1e-6, r - inner), 0.0, 1.0)
+    thr = _BAYER8[np.mod(yy, 8), np.mod(xx, 8)]
+    return cov > thr
 
 
 def paint_disk(label: np.ndarray, cy: int, cx: int, r: float, target: int,
-               allow: np.ndarray | None = None) -> None:
+               allow: np.ndarray | None = None, soft: float = 0.0) -> None:
     """把圆盘内像素赋给目标层（自动从其它层扣掉——单一标签图天然互斥）。
 
     allow：可选的布尔掩膜（如 HU 范围内像素），只在该区域内涂抹。
+    soft：>0 时使用软边圆盘（边缘羽化）。
     """
-    m = disk_mask(label.shape, cy, cx, r)
+    m = disk_mask(label.shape, cy, cx, r, soft)
     if allow is not None:
         m &= allow
     label[m] = target
 
 
 def erase_disk(label: np.ndarray, cy: int, cx: int, r: float,
-               allow: np.ndarray | None = None) -> None:
-    """把圆盘内像素擦回背景；allow 同上，限制擦除范围。"""
-    m = disk_mask(label.shape, cy, cx, r)
+               allow: np.ndarray | None = None, soft: float = 0.0) -> None:
+    """把圆盘内像素擦回背景；allow / soft 同上，限制擦除范围与边缘羽化。"""
+    m = disk_mask(label.shape, cy, cx, r, soft)
     if allow is not None:
         m &= allow
     label[m] = 0

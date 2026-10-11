@@ -181,8 +181,11 @@ class MainWindow(QMainWindow):
         self.act_alpha = QAction("半透明叠加", self, checkable=True)
         self.act_alpha.setChecked(True)
         self.act_alpha.toggled.connect(self._on_alpha)
+        self.act_overlay_only = QAction("只看叠加（隐藏 CT）", self, checkable=True)
+        self.act_overlay_only.toggled.connect(self._on_overlay_only)
         m_view.addSeparator()
         m_view.addAction(self.act_alpha)
+        m_view.addAction(self.act_overlay_only)
 
         m_seg = mb.addMenu("分割(&S)")
         a = QAction("一键自动分割", self)
@@ -230,6 +233,7 @@ class MainWindow(QMainWindow):
         self.toolbar.undoRequested.connect(self._on_undo)
         self.toolbar.redoRequested.connect(self._on_redo)
         self.toolbar.brushChanged.connect(self.image.set_brush_mm)
+        self.toolbar.brushSoftChanged.connect(self.image.set_brush_soft)
         self.toolbar.targetChanged.connect(self._on_target)
         self.toolbar.huRangeChanged.connect(self.image.set_hu_range)
         self.toolbar.brushLimitChanged.connect(self.image.set_brush_limit_hu)
@@ -328,6 +332,10 @@ class MainWindow(QMainWindow):
             row.chk.blockSignals(False)
         self.image.rebuild_overlay()
         self.image.update()
+
+    def _on_overlay_only(self, on):
+        """勾选后隐藏灰度 CT，只看彩色叠加。"""
+        self.image.set_show_gray(not on)
 
     def _on_alpha(self, on):
         case = self.current_case()
@@ -728,9 +736,11 @@ class MainWindow(QMainWindow):
             "&nbsp;&nbsp;&nbsp;滚轮缩放，中键/右键拖拽平移；Ctrl+0 适应窗口。<br>"
             "3. <b>区域生长</b>：选目标层，在图上点击种子点，程序向 HU 相近区域生长。<br>"
             "4. <b>画笔/橡皮</b>：选目标层，按住左键涂抹增 / 删；<br>"
-            "&nbsp;&nbsp;&nbsp;勾选「限 HU 范围」时只作用于该 HU 范围内的像素。<br>"
+            "&nbsp;&nbsp;&nbsp;勾选「限 HU」时只作用于该 HU 范围内的像素；<br>"
+            "&nbsp;&nbsp;&nbsp;勾选「软边」时笔刷边缘羽化，边界更柔和。<br>"
             "5. 右侧查看实时面积；Ctrl+Z 撤销，Ctrl+Y 重做。<br>"
-            "6. 三图层互斥：向某层添加像素会自动从其它层移除。"))
+            "6. 「视图」菜单可切换「只看叠加（隐藏 CT）」核对边界。<br>"
+            "7. 三图层互斥：向某层添加像素会自动从其它层移除。"))
 
     def _on_about(self):
         params = "<br>".join(f"{k}：{v}" for k, v in C.V3_PARAMS)

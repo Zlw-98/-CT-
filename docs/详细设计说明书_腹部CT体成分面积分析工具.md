@@ -528,11 +528,11 @@ VAT/SAT  = nVAT/nSAT   (nSAT=0 → None)
 | FR-1 数据导入 | `dicom_io` | ✅（文件夹/单文件；启动仍默认内置示例） |
 | FR-2 显示与浏览（WW/WL/缩放/平移/状态栏） | `image_view` | ✅（层切换 FR-2.5 预留） |
 | FR-3 自动分割（v3 / 参数可调 / ≤2s / 叠加 / 批量） | `segmentation` + `render` + `workers` | ✅ 单例一键 + 批量后台（69 例≈17s） |
-| FR-4 交互微调（互斥/区域生长/画笔/橡皮/撤销/实时/视图辅助） | `editing`+`image_view`+`undo`+`panels` | ✅（软边笔刷 ⬜） |
+| FR-4 交互微调（互斥/区域生长/画笔/橡皮/撤销/实时/视图辅助） | `editing`+`image_view`+`undo`+`panels` | ✅（含软边笔刷、只看叠加） |
 | FR-5 面积与派生指标（自动/人工区分/重置） | `CaseModel.areas`+`RightPanel` | ✅ |
 | FR-6 结果导出（CSV/PNG；xlsx/NRRD 本期不做） | `export` | ✅ CSV + 叠加 PNG |
 | FR-7 批量与工程/会话 | `workers`+`project` | ✅ 批量 + `.bcprj` 存/取 + 未保存提示（多例逐例精修 ✅） |
-| FR-8 设置（参数/输出/颜色/恢复默认） | `constants` + 设置对话框 | ⬜（默认值已在 constants） |
+| FR-8 设置（参数/输出/颜色/恢复默认） | `constants` + `settings` + 设置对话框 | ✅（JSON 持久化 + 恢复默认） |
 | FR-10 稳定性/可复现/可移植/离线 | §9/§10 | 部分 ✅ |
 
 ---
@@ -545,8 +545,8 @@ VAT/SAT  = nVAT/nSAT   (nSAT=0 → None)
 4. **批量并发** ✅：`app/workers.py` 已建，批量分割带进度条与取消，结果按路径回填。
 5. **导出** ✅：`app/export.py` 已建（utf-8-sig CSV 通用列、PNG 图例+面积）；xlsx/NRRD 按用户确认暂不做。
 6. **工程** ✅：`app/project.py` 已建（zip+npz），含"未保存提示"与脏标记。
-7. **设置** ⬜：参数/输出目录/颜色方案的设置对话框 + 恢复默认。
-8. **打磨** ⬜：软边笔刷、视图辅助增强、错误处理、600+ 例性能回归；最后 PyInstaller 打包。
+7. **设置** ✅：`app/settings.py`（JSON 持久化）+ `ui/settings_dialog.py`（v3 参数/输出目录/颜色 + 恢复默认）。
+8. **打磨** ◐：软边笔刷 ✅、视图辅助「只看叠加」✅、全局错误处理 ✅；待办：600+ 例性能回归、PyInstaller 打包。
 
 > 原型已把 §1 原则中的"数据模型/渲染/编辑/视图"打牢，第 4–7 步均为**新增文件 + 接线**，不改动已验证的核心。
 > §10 待补：`dicom_io`/`segmentation` 的异常处理与 `CaseModel` 懒加载已随 WP-1~3 落地。

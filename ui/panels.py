@@ -247,6 +247,7 @@ class EditToolbar(QWidget):
     undoRequested = Signal()
     redoRequested = Signal()
     brushChanged = Signal(float)
+    brushSoftChanged = Signal(bool)
     targetChanged = Signal(int)
     huRangeChanged = Signal(float, float)
     brushLimitChanged = Signal(bool)
@@ -307,6 +308,11 @@ class EditToolbar(QWidget):
         self.sl_brush.valueChanged.connect(
             lambda v: (self.lbl_brush.setText(f"笔刷 {v}mm"), self.brushChanged.emit(float(v))))
         h.addWidget(self.sl_brush)
+
+        self.chk_soft = QCheckBox("软边")
+        self.chk_soft.setToolTip("勾选后笔刷/橡皮边缘羽化，边界更柔和")
+        self.chk_soft.toggled.connect(self.brushSoftChanged.emit)
+        h.addWidget(self.chk_soft)
 
         h.addWidget(self._sep())
 
@@ -394,6 +400,7 @@ class EditToolbar(QWidget):
         self.cmb_layer.setEnabled(True)
         self.lbl_brush.setEnabled(is_brush)
         self.sl_brush.setEnabled(is_brush)
+        self.chk_soft.setEnabled(is_brush)
         self.lbl_hu.setEnabled(use_hu)
         self.sp_lo.setEnabled(use_hu)
         self.sp_hi.setEnabled(use_hu)
