@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 from app import constants as C
 from app import dicom_io
 from app import export
+from app import project
 from app import segmentation
 from app.case_model import CaseModel
 from app.sample_data import load_sample_cases
@@ -39,6 +40,8 @@ class MainWindow(QMainWindow):
         self.cases = []
         self.current_index = -1
         self._batch = None
+        self._project_path = None
+        self._dirty = False
         self._export_dir = os.path.join(os.getcwd(), "results")
         if not os.path.isdir(self._export_dir):
             self._export_dir = os.path.expanduser("~")
@@ -55,6 +58,7 @@ class MainWindow(QMainWindow):
         if self.cases:
             self.case_panel.set_cases(self.cases)
             self.case_panel.select(0)
+        self._set_dirty(False)
 
     # ==================== 界面 ====================
     def _build_ui(self):
@@ -120,6 +124,18 @@ class MainWindow(QMainWindow):
         m_file.addAction(a)
         a = QAction("导出当前例叠加图 (PNG) …", self)
         a.triggered.connect(self._on_export_png)
+        m_file.addAction(a)
+        m_file.addSeparator()
+        a = QAction("打开工程 …", self)
+        a.setShortcut("Ctrl+Shift+O")
+        a.triggered.connect(self._on_open_project)
+        m_file.addAction(a)
+        a = QAction("保存工程", self)
+        a.setShortcut("Ctrl+S")
+        a.triggered.connect(self._on_save_project)
+        m_file.addAction(a)
+        a = QAction("工程另存为 …", self)
+        a.triggered.connect(self._on_save_project_as)
         m_file.addAction(a)
         m_file.addSeparator()
         a = QAction("退出", self)
@@ -253,6 +269,7 @@ class MainWindow(QMainWindow):
         self.lbl_wl.setText(f"窗位 {wl} / 窗宽 {ww}")
 
     def _on_edited(self):
+        self._set_dirty(True)
         self._refresh()
 
     # ==================== 图层 ====================
@@ -285,6 +302,7 @@ class MainWindow(QMainWindow):
         case.label[case.label == lbl] = C.BG
         self.image.rebuild_overlay()
         self.image.update()
+        self._set_dirty(True)
         self._refresh()
         self.statusBar().showMessage(f"已清空 {C.LAYER_CN[lbl]} 层", 2500)
 
@@ -336,6 +354,7 @@ class MainWindow(QMainWindow):
         case.label = st
         self.image.rebuild_overlay()
         self.image.update()
+        self._set_dirty(True)
         self._refresh()
 
     def _on_redo(self):
@@ -349,6 +368,7 @@ class MainWindow(QMainWindow):
         case.label = st
         self.image.rebuild_overlay()
         self.image.update()
+        self._set_dirty(True)
         self._refresh()
 
     # ==================== 分割 ====================
@@ -372,6 +392,7 @@ class MainWindow(QMainWindow):
         case.body = body
         self.image.rebuild_overlay()
         self.image.update()
+        self._set_dirty(True)
         self._refresh()
         self.statusBar().showMessage("已完成 v3 自动分割", 3000)
 
@@ -453,6 +474,8 @@ class MainWindow(QMainWindow):
         if dlg is not None:
             dlg.close()
         self._batch = None
+        if n_ok:
+            self._set_dirty(True)
         self.image.rebuild_overlay()
         self.image.update()
         self._refresh()
@@ -466,6 +489,7 @@ class MainWindow(QMainWindow):
         if case.reset_to_auto():
             self.image.rebuild_overlay()
             self.image.update()
+            self._set_dirty(True)
             self._refresh()
             self.statusBar().showMessage("已重置为自动结果", 2500)
         else:
@@ -514,8 +538,10 @@ class MainWindow(QMainWindow):
         """替换当前病例列表并选中第一例。"""
         self.cases = cases
         self.current_index = -1
+        self._project_path = None
         self.case_panel.set_cases(self.cases)
         self.case_panel.select(0)
+        self._set_dirty(False)
 
         msg = f"已导入 {len(cases)} 例"
         if skipped:
@@ -585,6 +611,88 @@ class MainWindow(QMainWindow):
             return
         self._export_dir = os.path.dirname(path)
         self.statusBar().showMessage(f"已导出叠加图 → {path}", 8000)
+
+    # ==================== 工程 ====================
+    def _set_dirty(self, v):
+        self._dirty = bool(v)
+        name = os.path.basename(self._project_path) if self._project_path else "未命名工程"
+        mark = " *" if self._dirty else ""
+        self.setWindowTitle(f"{C.APP_NAME} · {C.APP_VERSION} — {name}{mark}")
+
+    def _on_open_project(self):
+        if not self._maybe_save():
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self, "打开工程", self._export_dir, "体成分工程 (*.bcprj)")
+        if not path:
+            return
+        try:
+            cases, idx, _vs = project.load_project(path)
+        except Exception as e:  # noqa: BLE001
+            QMessageBox.critical(self, "打开失败", str(e))
+            return
+        self.cases = cases
+        self.current_index = -1
+        self.case_panel.set_cases(self.cases)
+        if self.cases:
+            self.case_panel.select(max(0, min(idx, len(self.cases) - 1)))
+        self._project_path = path
+        self._export_dir = os.path.dirname(path)
+        self._set_dirty(False)
+        self.statusBar().showMessage(f"已打开工程：{os.path.basename(path)}", 6000)
+
+    def _on_save_project(self):
+        if not self._project_path:
+            self._on_save_project_as()
+            return
+        self._save_to(self._project_path)
+
+    def _on_save_project_as(self):
+        default = self._project_path or self._default_export_path("体成分工程.bcprj")
+        path, _ = QFileDialog.getSaveFileName(
+            self, "保存工程", default, "体成分工程 (*.bcprj)")
+        if not path:
+            return
+        if not path.lower().endswith(".bcprj"):
+            path += ".bcprj"
+        self._save_to(path)
+
+    def _save_to(self, path):
+        if not self.cases:
+            self.statusBar().showMessage("没有可保存的病例", 3000)
+            return
+        try:
+            project.save_project(path, self.cases, self.current_index)
+        except Exception as e:  # noqa: BLE001
+            QMessageBox.critical(self, "保存失败", str(e))
+            return
+        self._project_path = path
+        self._export_dir = os.path.dirname(path)
+        self._set_dirty(False)
+        self.statusBar().showMessage(f"已保存工程：{os.path.basename(path)}", 6000)
+
+    def _maybe_save(self) -> bool:
+        """有未保存修改时询问；返回 True=可继续，False=用户取消。"""
+        if not self._dirty:
+            return True
+        r = QMessageBox.question(
+            self, "未保存的修改", "当前工程有未保存的修改，是否保存？",
+            QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard
+            | QMessageBox.StandardButton.Cancel)
+        if r == QMessageBox.StandardButton.Save:
+            self._on_save_project()
+            return not self._dirty
+        if r == QMessageBox.StandardButton.Discard:
+            return True
+        return False
+
+    def closeEvent(self, event):
+        if self._batch is not None and self._batch[0].isRunning():
+            self._batch[0].requestInterruption()
+        if self._maybe_save():
+            event.accept()
+        else:
+            event.ignore()
 
     # ==================== 帮助 ====================
     def _on_help(self):

@@ -319,8 +319,16 @@ export_overlay_png(case, path)             # QPainter 合成：灰度+三层叠�
 PNG：导出时三层一律可见（不受界面开关影响）；颜色复用 `render.build_overlay`。
 当前不导出 xlsx / NRRD（用户 2026-10-11 确认仅需 CSV + PNG）。
 
-### 4.12 `app/project.py` ⬜
-`save_project(path, cases, view_state)` / `load_project(path) -> (cases, view_state)`，格式见 §3.4。
+### 4.12 `app/project.py` ✅
+```
+save_project(path, cases, current_index=0, view_state=None) -> int
+load_project(path) -> (cases, current_index, view_state)
+```
+格式：zip（`project.json` + `masks/<cid>.npz`）。`project.json` 存病例 meta/px_mm/wl·ww/
+visible·opacity·locked（键转字符串），当前单元与视图状态；`masks/<cid>.npz` 存
+`hu`（整数且在 int16 范围内存 int16，否则 float32）+ `label` + `auto_label`。
+`body` 不存储，载入时由 HU 重算（`segmentation.body_mask`，确定性）。
+主窗口：文件菜单 打开/保存/另存为 + 脏标记（标题星号）+ 关闭时未保存提示（FR-7.4）。
 
 ---
 
@@ -523,7 +531,7 @@ VAT/SAT  = nVAT/nSAT   (nSAT=0 → None)
 | FR-4 交互微调（互斥/区域生长/画笔/橡皮/撤销/实时/视图辅助） | `editing`+`image_view`+`undo`+`panels` | ✅（软边笔刷 ⬜） |
 | FR-5 面积与派生指标（自动/人工区分/重置） | `CaseModel.areas`+`RightPanel` | ✅ |
 | FR-6 结果导出（CSV/PNG；xlsx/NRRD 本期不做） | `export` | ✅ CSV + 叠加 PNG |
-| FR-7 批量与工程/会话 | `workers`+`project` | ⬜（多例逐例精修 ✅） |
+| FR-7 批量与工程/会话 | `workers`+`project` | ✅ 批量 + `.bcprj` 存/取 + 未保存提示（多例逐例精修 ✅） |
 | FR-8 设置（参数/输出/颜色/恢复默认） | `constants` + 设置对话框 | ⬜（默认值已在 constants） |
 | FR-10 稳定性/可复现/可移植/离线 | §9/§10 | 部分 ✅ |
 
@@ -536,7 +544,7 @@ VAT/SAT  = nVAT/nSAT   (nSAT=0 → None)
 3. **接一键分割** ✅：`MainWindow._on_auto` 调 `segment_v3`，写 `label/auto_label/body`，刷新（单例同步）。
 4. **批量并发** ✅：`app/workers.py` 已建，批量分割带进度条与取消，结果按路径回填。
 5. **导出** ✅：`app/export.py` 已建（utf-8-sig CSV 通用列、PNG 图例+面积）；xlsx/NRRD 按用户确认暂不做。
-6. **工程** ⬜：新增 `app/project.py`（zip+npz），加"未保存提示"。
+6. **工程** ✅：`app/project.py` 已建（zip+npz），含"未保存提示"与脏标记。
 7. **设置** ⬜：参数/输出目录/颜色方案的设置对话框 + 恢复默认。
 8. **打磨** ⬜：软边笔刷、视图辅助增强、错误处理、600+ 例性能回归；最后 PyInstaller 打包。
 
@@ -559,7 +567,9 @@ VAT/SAT  = nVAT/nSAT   (nSAT=0 → None)
 ## 附录 B：快捷键
 | 快捷键 | 功能 |
 |---|---|
-| Ctrl+O / Ctrl+Q | 导入 / 退出 |
+| Ctrl+O / Ctrl+Q | 导入 DICOM 文件夹 / 退出 |
+| Ctrl+S | 保存工程 |
+| Ctrl+Shift+O | 打开工程 |
 | Ctrl+Z / Ctrl+Y（或 Ctrl+Shift+Z） | 撤销 / 重做 |
 | Ctrl+0 / Ctrl+= / Ctrl+- | 适应窗口 / 放大 / 缩小 |
 | F5 | 一键自动分割（当前例） |
