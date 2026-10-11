@@ -11,3 +11,7 @@ software/
 Thumbs.db
 desktop.ini
 *.tmp
+
+# Python 缓存
+__pycache__/
+*.pyc

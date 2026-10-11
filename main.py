@@ -1,0 +1,51 @@
+# -*- coding: utf-8 -*-
+"""腹部CT体成分面积分析工具 —— 应用入口。
+
+高保真可交互原型（仅界面版）：使用内置示例数据，不读实时 DICOM、不跑实时算法。
+
+运行：
+    "C:/Users/Levin Zhang/.workbuddy/binaries/python/envs/default/Scripts/python.exe" main.py
+"""
+import os
+import sys
+
+# 保证以项目根目录为包搜索根（支持任意工作目录启动 / 打包）
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication, QMessageBox
+
+from app.style import apply_style
+from ui.main_window import MainWindow
+
+
+def _install_excepthook():
+    """无控制台启动（pythonw）时，把未捕获异常以对话框形式提示，避免静默退出。"""
+    import traceback
+
+    def hook(exc_type, exc, tb):
+        text = "".join(traceback.format_exception(exc_type, exc, tb))
+        try:
+            QMessageBox.critical(None, "程序错误", text[-4000:])
+        except Exception:
+            pass
+        sys.stderr.write(text)
+
+    sys.excepthook = hook
+
+
+def main():
+    QApplication.setHighDpiScaleFactorRoundingPolicy(
+        Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+    app = QApplication(sys.argv)
+    app.setApplicationName("CT体成分分析")
+    apply_style(app)
+    _install_excepthook()
+
+    win = MainWindow()
+    win.show()
+    sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    main()
