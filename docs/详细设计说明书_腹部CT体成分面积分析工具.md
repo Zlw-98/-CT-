@@ -307,8 +307,17 @@ class SegmentWorker(QObject):
 主线程：`QProgressDialog`（模态、可取消）→ 结果经 `CaseModel.apply_segmentation` 回填；
 无路径的内置示例就近在主线程分割。实测 69 例约 17s、界面不冻结。
 
-### 4.11 `app/export.py` ⬜
-`export_csv(rows, path)`（utf-8-sig）、`export_overlay_png(case, path)`、`export_mask_nrrd(case, path)`。
+### 4.11 `app/export.py` ✅
+```
+CSV_COLUMNS = [文件, 患者ID, 性别, 年龄, 序列描述, 层厚mm, 像素间距mm,
+               身体面积cm², 总脂肪cm², 皮下脂肪SATcm², 内脏脂肪VATcm², 骨骼肌SMAcm²,
+               VAT/SAT, 肌肉平均HU, 是否人工编辑]
+case_row(case) -> dict                     # 元数据 + 面积
+export_csv(cases, path) -> int             # utf-8-sig（Excel 中文不乱码）
+export_overlay_png(case, path)             # QPainter 合成：灰度+三层叠加+图例+面积
+```
+PNG：导出时三层一律可见（不受界面开关影响）；颜色复用 `render.build_overlay`。
+当前不导出 xlsx / NRRD（用户 2026-10-11 确认仅需 CSV + PNG）。
 
 ### 4.12 `app/project.py` ⬜
 `save_project(path, cases, view_state)` / `load_project(path) -> (cases, view_state)`，格式见 §3.4。
@@ -513,7 +522,7 @@ VAT/SAT  = nVAT/nSAT   (nSAT=0 → None)
 | FR-3 自动分割（v3 / 参数可调 / ≤2s / 叠加 / 批量） | `segmentation` + `render` + `workers` | ✅ 单例一键 + 批量后台（69 例≈17s） |
 | FR-4 交互微调（互斥/区域生长/画笔/橡皮/撤销/实时/视图辅助） | `editing`+`image_view`+`undo`+`panels` | ✅（软边笔刷 ⬜） |
 | FR-5 面积与派生指标（自动/人工区分/重置） | `CaseModel.areas`+`RightPanel` | ✅ |
-| FR-6 结果导出（CSV/xlsx/PNG/NRRD） | `export` | ⬜ |
+| FR-6 结果导出（CSV/PNG；xlsx/NRRD 本期不做） | `export` | ✅ CSV + 叠加 PNG |
 | FR-7 批量与工程/会话 | `workers`+`project` | ⬜（多例逐例精修 ✅） |
 | FR-8 设置（参数/输出/颜色/恢复默认） | `constants` + 设置对话框 | ⬜（默认值已在 constants） |
 | FR-10 稳定性/可复现/可移植/离线 | §9/§10 | 部分 ✅ |
@@ -526,7 +535,7 @@ VAT/SAT  = nVAT/nSAT   (nSAT=0 → None)
 2. **接数据** ✅：`app/dicom_io.py` 已建；[导入]接真实 `scan_folder` + 按需 `read_hu`（懒加载）。
 3. **接一键分割** ✅：`MainWindow._on_auto` 调 `segment_v3`，写 `label/auto_label/body`，刷新（单例同步）。
 4. **批量并发** ✅：`app/workers.py` 已建，批量分割带进度条与取消，结果按路径回填。
-5. **导出** ⬜：新增 `app/export.py`（utf-8-sig CSV、PNG 图例、NRRD 可选）。
+5. **导出** ✅：`app/export.py` 已建（utf-8-sig CSV 通用列、PNG 图例+面积）；xlsx/NRRD 按用户确认暂不做。
 6. **工程** ⬜：新增 `app/project.py`（zip+npz），加"未保存提示"。
 7. **设置** ⬜：参数/输出目录/颜色方案的设置对话框 + 恢复默认。
 8. **打磨** ⬜：软边笔刷、视图辅助增强、错误处理、600+ 例性能回归；最后 PyInstaller 打包。

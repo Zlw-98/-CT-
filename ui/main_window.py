@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
 """主窗口：菜单栏 + 三栏布局 + 底部编辑工具条 + 状态栏，以及各控件信号连线。"""
+import os
+import time
+
 from PySide6.QtCore import Qt, QThread
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
@@ -9,6 +12,7 @@ from PySide6.QtWidgets import (
 
 from app import constants as C
 from app import dicom_io
+from app import export
 from app import segmentation
 from app.case_model import CaseModel
 from app.sample_data import load_sample_cases
@@ -35,6 +39,9 @@ class MainWindow(QMainWindow):
         self.cases = []
         self.current_index = -1
         self._batch = None
+        self._export_dir = os.path.join(os.getcwd(), "results")
+        if not os.path.isdir(self._export_dir):
+            self._export_dir = os.path.expanduser("~")
 
         try:
             self.cases = load_sample_cases()
@@ -105,8 +112,14 @@ class MainWindow(QMainWindow):
         a = QAction("导入 DICOM 文件 …", self)
         a.triggered.connect(self._on_import_file)
         m_file.addAction(a)
-        a = QAction("导出结果 …", self)
-        a.triggered.connect(lambda: self._toast("正式版将支持导出 CSV / Excel 数据与叠加图 PNG。"))
+        a = QAction("导出全部病例数据表 (CSV) …", self)
+        a.triggered.connect(self._on_export_csv_all)
+        m_file.addAction(a)
+        a = QAction("导出当前例数据表 (CSV) …", self)
+        a.triggered.connect(self._on_export_csv_current)
+        m_file.addAction(a)
+        a = QAction("导出当前例叠加图 (PNG) …", self)
+        a.triggered.connect(self._on_export_png)
         m_file.addAction(a)
         m_file.addSeparator()
         a = QAction("退出", self)
@@ -518,6 +531,60 @@ class MainWindow(QMainWindow):
             detail.append(f"另有 {len(missing)} 例缺少 PixelSpacing，无法计算面积")
         if detail:
             QMessageBox.information(self, "导入完成", msg + "\n\n" + "\n".join(detail))
+
+    # ==================== 导出 ====================
+    def _default_export_path(self, filename):
+        return os.path.join(self._export_dir, filename)
+
+    def _on_export_csv_all(self):
+        self._export_csv(self.cases, "全部病例")
+
+    def _on_export_csv_current(self):
+        case = self.current_case()
+        if case is None:
+            self.statusBar().showMessage("没有可导出的病例", 3000)
+            return
+        self._export_csv([case], case.name)
+
+    def _export_csv(self, cases, tag):
+        cases = [c for c in cases if c is not None]
+        if not cases:
+            self.statusBar().showMessage("没有可导出的病例", 3000)
+            return
+        default = self._default_export_path(
+            f"体成分面积_{tag}_{time.strftime('%Y%m%d_%H%M')}.csv")
+        path, _ = QFileDialog.getSaveFileName(self, "导出数据表", default, "CSV 文件 (*.csv)")
+        if not path:
+            return
+        if not path.lower().endswith(".csv"):
+            path += ".csv"
+        try:
+            n = export.export_csv(cases, path)
+        except Exception as e:  # noqa: BLE001
+            QMessageBox.critical(self, "导出失败", str(e))
+            return
+        self._export_dir = os.path.dirname(path)
+        self.statusBar().showMessage(f"已导出 {n} 例 → {path}", 8000)
+
+    def _on_export_png(self):
+        case = self.current_case()
+        if case is None:
+            self.statusBar().showMessage("没有可导出的病例", 3000)
+            return
+        case.ensure_loaded()
+        default = self._default_export_path(f"{case.name}_叠加图.png")
+        path, _ = QFileDialog.getSaveFileName(self, "导出叠加图", default, "PNG 图片 (*.png)")
+        if not path:
+            return
+        if not path.lower().endswith(".png"):
+            path += ".png"
+        try:
+            export.export_overlay_png(case, path)
+        except Exception as e:  # noqa: BLE001
+            QMessageBox.critical(self, "导出失败", str(e))
+            return
+        self._export_dir = os.path.dirname(path)
+        self.statusBar().showMessage(f"已导出叠加图 → {path}", 8000)
 
     # ==================== 帮助 ====================
     def _on_help(self):
