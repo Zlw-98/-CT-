@@ -44,7 +44,7 @@
 | **M4** | 导出 | CSV + 叠加 PNG | WP-5 | ✅ 已完成 |
 | **M5** | 工程文件 | 保存/载入 `.bcprj`，可复现 | WP-6 | ✅ 已完成 |
 | **M6** | 设置 | 算法参数/输出目录/颜色，恢复默认 | WP-7 | ✅ 已完成 |
-| **M7** | 打磨与打包 | 软边笔刷、错误处理、性能回归、PyInstaller | WP-8 ~ WP-10 | ◐ WP-8/9 完成，待打包 |
+| **M7** | 打磨与打包 | 软边笔刷、错误处理、性能回归、PyInstaller | WP-8 ~ WP-10 | ✅ 已完成（onedir） |
 | **M8** | 验收 | 对照需求 §11 逐条跑通 | WP-11 | ⬜ |
 
 ---
@@ -258,6 +258,7 @@ WP-2 导入 ───┘                  │                              ├�
 | 2026-10-11 | M6 / WP-7 | `app/settings.py`（JSON 持久化到 `%APPDATA%/腹部CT体成分分析工具/settings.json`）+ `ui/settings_dialog.py`（v3 参数/输出目录/图层颜色 + 恢复默认）；接线：`segment_v3`/`body_mask` 读 `settings.v3_params()`、批量 worker 传入参数、启动 `apply_colors()`、`RightPanel.refresh_colors()` 刷新色块，菜单「设置」 |
 | 2026-10-11 | M7 / WP-8 | 软边笔刷（`editing.disk_mask` Bayer 有序抖动羽化 + 工具条「软边」开关，FR-4.3）；视图辅助「只看叠加（隐藏 CT）」（FR-4.6）；`main()` 顶层异常弹窗；边界用例 headless 验证通过 |
 | 2026-10-11 | M7 / WP-9 | 性能回归见 §11；全部达标（导入≪30s/100例、单例分割 221ms、编辑 0.65ms、单例内存 1.6MB） |
+| 2026-10-11 | M7 / WP-10 | PyInstaller 6.22.3 **onedir** 打包：`build.spec` + `打包.bat`；`assets/` 随包（`sample_data.assets_path()` 支持 `sys._MEIPASS`）；产物 `dist/腹部CT体成分分析工具/`（约 249MB），冷启动正常、窗口标题正确、Qt 平台插件齐全 |
 
 ---
 

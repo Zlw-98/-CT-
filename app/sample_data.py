@@ -4,6 +4,7 @@
 原型阶段不读真实 DICOM、不跑实时算法——只加载这份静态资产。
 """
 import os
+import sys
 import json
 import numpy as np
 
@@ -11,7 +12,11 @@ from .case_model import CaseModel
 
 
 def assets_path() -> str:
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    # 打包（PyInstaller）后资源解压到 sys._MEIPASS；开发时用项目根目录
+    if getattr(sys, "frozen", False):
+        root = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
+    else:
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(root, "assets", "sample.npz")
 
 
