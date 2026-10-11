@@ -16,10 +16,11 @@ class SegmentWorker(QObject):
     one_failed = Signal(str, str)             # key, error
     all_done = Signal(int, int)               # ok, failed
 
-    def __init__(self, jobs):
+    def __init__(self, jobs, params=None):
         """jobs: list[(key, path)]，key 通常为文件路径（回填用）。"""
         super().__init__()
         self.jobs = list(jobs)
+        self.params = params
 
     @Slot()
     def run(self):
@@ -30,7 +31,7 @@ class SegmentWorker(QObject):
                 break
             try:
                 hu, px_mm, _meta = dicom_io.read_hu(path)
-                label, body = segmentation.segment_v3(hu, px_mm)
+                label, body = segmentation.segment_v3(hu, px_mm, self.params)
                 self.one_done.emit(key, hu, label, body)
                 ok += 1
             except Exception as e:  # noqa: BLE001

@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """腹部CT体成分面积分析工具 —— 应用入口。
 
-高保真可交互原型（仅界面版）：使用内置示例数据，不读实时 DICOM、不跑实时算法。
+导入真实 DICOM、v3 一键/批量自动分割、人工微调、实时面积、导出 CSV/PNG、工程文件。
+启动默认载入内置示例数据。
 
 运行：
     "C:/Users/Levin Zhang/.workbuddy/binaries/python/envs/default/Scripts/python.exe" main.py
@@ -15,6 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QMessageBox
 
+from app import settings
 from app.style import apply_style
 from ui.main_window import MainWindow
 
@@ -40,6 +42,7 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("CT体成分分析")
     apply_style(app)
+    settings.apply_colors()   # 载入用户保存的图层颜色
     _install_excepthook()
 
     win = MainWindow()

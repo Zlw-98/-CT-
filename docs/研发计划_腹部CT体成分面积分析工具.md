@@ -43,7 +43,7 @@
 | **M3** | 批量并发 | 整文件夹批量分割带进度 | WP-4 | ✅ 已完成 |
 | **M4** | 导出 | CSV + 叠加 PNG | WP-5 | ✅ 已完成 |
 | **M5** | 工程文件 | 保存/载入 `.bcprj`，可复现 | WP-6 | ✅ 已完成 |
-| **M6** | 设置 | 算法参数/输出目录/颜色，恢复默认 | WP-7 | ⬜ |
+| **M6** | 设置 | 算法参数/输出目录/颜色，恢复默认 | WP-7 | ✅ 已完成 |
 | **M7** | 打磨与打包 | 软边笔刷、错误处理、性能回归、PyInstaller | WP-8 ~ WP-10 | ⬜ |
 | **M8** | 验收 | 对照需求 §11 逐条跑通 | WP-11 | ⬜ |
 
@@ -255,6 +255,7 @@ WP-2 导入 ───┘                  │                              ├�
 | 2026-10-11 | M3 / WP-4 | `app/workers.py`（QThread + 进度 + 取消）；菜单「批量自动分割（全部病例）」F6；69 例≈17s、界面不冻结；`apply_segmentation` 回填 |
 | 2026-10-11 | M4 / WP-5 | `app/export.py`（utf-8-sig CSV 通用列 + 叠加 PNG 含图例/面积）；文件菜单三项导出；用户确认仅需 CSV + PNG |
 | 2026-10-11 | M5 / WP-6 | `app/project.py`（zip: project.json + masks/*.npz，含 hu/label/auto_label + 视图状态）；打开/保存/另存为 + 脏标记 + 关闭提示；往返逐像素一致 |
+| 2026-10-11 | M6 / WP-7 | `app/settings.py`（JSON 持久化到 `%APPDATA%/腹部CT体成分分析工具/settings.json`）+ `ui/settings_dialog.py`（v3 参数/输出目录/图层颜色 + 恢复默认）；接线：`segment_v3`/`body_mask` 读 `settings.v3_params()`、批量 worker 传入参数、启动 `apply_colors()`、`RightPanel.refresh_colors()` 刷新色块，菜单「设置」 |
 
 > 验证：`ct/` 导入 69 例、懒加载按选中例触发、真实数据区域生长与三图层互斥均通过；
 > 已提交 git。

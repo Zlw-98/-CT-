@@ -74,7 +74,8 @@ class CaseModel:
         hu, px_mm, _meta = self._loader()
         self.hu = np.ascontiguousarray(hu, dtype=np.float32)
         self.px_mm = float(px_mm)
-        self.body = segmentation.body_mask(self.hu)
+        from . import settings
+        self.body = segmentation.body_mask(self.hu, settings.v3_params())
         self.auto_label = np.zeros(self.hu.shape, dtype=np.uint8)
         self.label = self.auto_label.copy()
         self._loaded = True

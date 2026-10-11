@@ -78,11 +78,11 @@ class _LayerRow(QWidget):
         h.setContentsMargins(0, 2, 0, 2)
         h.setSpacing(6)
 
-        swatch = QLabel()
-        swatch.setFixedSize(14, 14)
-        swatch.setStyleSheet(
+        self.swatch = QLabel()
+        self.swatch.setFixedSize(14, 14)
+        self.swatch.setStyleSheet(
             f"background:{C.LAYER_HEX[lbl]};border-radius:3px;")
-        h.addWidget(swatch)
+        h.addWidget(self.swatch)
 
         self.chk = QCheckBox(f"{C.LAYER_CN[lbl]} ({C.LAYER_NAME[lbl]})")
         self.chk.setChecked(True)
@@ -103,6 +103,10 @@ class _LayerRow(QWidget):
         self.clear.setProperty("class", "small")
         self.clear.setToolTip("清空该层")
         h.addWidget(self.clear)
+
+    def refresh_color(self):
+        self.swatch.setStyleSheet(
+            f"background:{C.LAYER_HEX[self.lbl]};border-radius:3px;")
 
 
 class RightPanel(QWidget):
@@ -144,6 +148,7 @@ class RightPanel(QWidget):
         av.addWidget(self.badge)
 
         self.area_labels = {}
+        self.dots = {}
         grid = QGridLayout()
         grid.setHorizontalSpacing(8)
         grid.setVerticalSpacing(6)
@@ -159,6 +164,7 @@ class RightPanel(QWidget):
             grid.addWidget(name, i, 1)
             grid.addWidget(val, i, 2)
             self.area_labels[lbl] = val
+            self.dots[lbl] = dot
         av.addLayout(grid)
 
         line = QFrame()
@@ -207,6 +213,13 @@ class RightPanel(QWidget):
                 w.blockSignals(True)
                 fn(val)
                 w.blockSignals(False)
+
+    def refresh_colors(self):
+        """设置变更后刷新色块（图层行 + 面积圆点）。"""
+        for lbl in C.LAYERS:
+            self.rows[lbl].refresh_color()
+            self.dots[lbl].setStyleSheet(
+                f"background:{C.LAYER_HEX[lbl]};border-radius:6px;")
 
     def refresh(self, areas, edited):
         for lbl in C.LAYERS:

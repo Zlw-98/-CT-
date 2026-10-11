@@ -15,11 +15,13 @@ from app import dicom_io
 from app import export
 from app import project
 from app import segmentation
+from app import settings
 from app.case_model import CaseModel
 from app.sample_data import load_sample_cases
 from app.workers import SegmentWorker
 from ui.image_view import ImageView
 from ui.panels import CasePanel, RightPanel, EditToolbar
+from ui.settings_dialog import SettingsDialog
 
 
 def _card(inner: QWidget) -> QFrame:
@@ -42,7 +44,9 @@ class MainWindow(QMainWindow):
         self._batch = None
         self._project_path = None
         self._dirty = False
-        self._export_dir = os.path.join(os.getcwd(), "results")
+        self._export_dir = settings.output_dir()
+        if not self._export_dir or not os.path.isdir(self._export_dir):
+            self._export_dir = os.path.join(os.getcwd(), "results")
         if not os.path.isdir(self._export_dir):
             self._export_dir = os.path.expanduser("~")
 
@@ -192,6 +196,11 @@ class MainWindow(QMainWindow):
         a = QAction("重置为自动结果", self)
         a.triggered.connect(self._on_reset)
         m_seg.addAction(a)
+
+        m_set = mb.addMenu("设置(&T)")
+        a = QAction("参数与选项 …", self)
+        a.triggered.connect(self._on_settings)
+        m_set.addAction(a)
 
         m_help = mb.addMenu("帮助(&H)")
         a = QAction("使用说明", self)
@@ -383,7 +392,7 @@ class MainWindow(QMainWindow):
             return
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            label, body = segmentation.segment_v3(case.hu, case.px_mm)
+            label, body = segmentation.segment_v3(case.hu, case.px_mm, settings.v3_params())
         finally:
             QApplication.restoreOverrideCursor()
         case.undo.push(case.label)
@@ -416,7 +425,7 @@ class MainWindow(QMainWindow):
                 c.ensure_loaded()
                 if c.px_mm <= 0:
                     raise ValueError("缺少 PixelSpacing")
-                label, body = segmentation.segment_v3(c.hu, c.px_mm)
+                label, body = segmentation.segment_v3(c.hu, c.px_mm, settings.v3_params())
                 c.apply_segmentation(c.hu, label, body)
                 n_ok += 1
             except Exception:  # noqa: BLE001
@@ -437,7 +446,7 @@ class MainWindow(QMainWindow):
         dlg.setValue(0)
 
         thread = QThread(self)
-        worker = SegmentWorker(path_jobs)
+        worker = SegmentWorker(path_jobs, settings.v3_params())
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
         self._batch = (thread, worker, dlg)
@@ -693,6 +702,22 @@ class MainWindow(QMainWindow):
             event.accept()
         else:
             event.ignore()
+
+    # ==================== 设置 ====================
+    def _on_settings(self):
+        dlg = SettingsDialog(self)
+        if not dlg.exec():
+            return
+        data = dlg.result_data()
+        if not settings.save(data):
+            QMessageBox.warning(self, "保存失败", "无法写入用户配置，设置仅本次生效。")
+        settings.apply_colors()          # 写回 constants（渲染/导出用）
+        if data.get("output_dir"):
+            self._export_dir = data["output_dir"]
+        self.right.refresh_colors()
+        self.image.rebuild_overlay()
+        self.image.update()
+        self.statusBar().showMessage("设置已更新（v3 参数将在下次自动分割时生效）", 5000)
 
     # ==================== 帮助 ====================
     def _on_help(self):
