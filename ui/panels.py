@@ -38,7 +38,7 @@ class CasePanel(QWidget):
         lay.addWidget(self.btn_import)
         lay.addWidget(self.btn_auto)
 
-        hint = QLabel("原型演示：当前为内置示例数据")
+        hint = QLabel("启动载入内置示例；可导入 DICOM 文件夹")
         hint.setProperty("class", "hint")
         hint.setWordWrap(True)
         lay.addWidget(hint)

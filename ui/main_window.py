@@ -4,10 +4,13 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QFrame,
-    QLabel, QMessageBox,
+    QLabel, QMessageBox, QFileDialog, QApplication,
 )
 
 from app import constants as C
+from app import dicom_io
+from app import segmentation
+from app.case_model import CaseModel
 from app.sample_data import load_sample_cases
 from ui.image_view import ImageView
 from ui.panels import CasePanel, RightPanel, EditToolbar
@@ -93,9 +96,12 @@ class MainWindow(QMainWindow):
         mb = self.menuBar()
 
         m_file = mb.addMenu("文件(&F)")
-        a = QAction("导入 DICOM …", self)
+        a = QAction("导入 DICOM 文件夹 …", self)
         a.setShortcut("Ctrl+O")
         a.triggered.connect(self._on_import)
+        m_file.addAction(a)
+        a = QAction("导入 DICOM 文件 …", self)
+        a.triggered.connect(self._on_import_file)
         m_file.addAction(a)
         a = QAction("导出结果 …", self)
         a.triggered.connect(lambda: self._toast("正式版将支持导出 CSV / Excel 数据与叠加图 PNG。"))
@@ -328,17 +334,27 @@ class MainWindow(QMainWindow):
 
     # ==================== 分割 ====================
     def _on_auto(self):
-        self._toast("内置示例数据已预先用 v3 阈值几何法完成自动分割。\n"
-                    "正式版将对导入的真实 DICOM 一键运行分割算法。")
         case = self.current_case()
         if case is None:
             return
+        case.ensure_loaded()
+        if case.px_mm <= 0:
+            QMessageBox.warning(self, "无法分割",
+                                "该切片的文件头缺少 PixelSpacing（像素间距），无法计算面积。")
+            return
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            label, body = segmentation.segment_v3(case.hu, case.px_mm)
+        finally:
+            QApplication.restoreOverrideCursor()
         case.undo.push(case.label)
-        case.label = case.auto_label.copy()
+        case.auto_label = label.copy()
+        case.label = label.copy()
+        case.body = body
         self.image.rebuild_overlay()
         self.image.update()
         self._refresh()
-        self.statusBar().showMessage("已恢复为自动分割结果", 2500)
+        self.statusBar().showMessage("已完成 v3 自动分割", 3000)
 
     def _on_reset(self):
         case = self.current_case()
@@ -352,10 +368,66 @@ class MainWindow(QMainWindow):
         else:
             self.statusBar().showMessage("当前即为自动结果", 2000)
 
-    def _on_import(self):
-        self._toast("原型阶段使用内置示例数据。\n"
-                    "正式版将支持：导入 DICOM 文件 / 文件夹（递归），\n"
-                    "读取并展示患者与扫描信息，然后一键自动分割。")
+    def _on_import(self, _checked=False):
+        """导入 DICOM 文件夹（递归）。"""
+        d = QFileDialog.getExistingDirectory(self, "选择 DICOM 文件夹")
+        if not d:
+            return
+        self._import_dir(d)
+
+    def _on_import_file(self):
+        """导入单个 DICOM 文件。"""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "选择 DICOM 文件", "",
+            "DICOM 文件 (*.dcm *.DCM *.ima *.IMA);;所有文件 (*)")
+        if not path:
+            return
+        try:
+            meta = dicom_io.scan_file(path)
+        except Exception as e:  # noqa: BLE001
+            QMessageBox.critical(self, "导入失败", str(e))
+            return
+        if not meta.ok:
+            QMessageBox.warning(self, "无法读取", f"{meta.display_name}\n{meta.error}")
+            return
+        self._set_cases([CaseModel.from_dicom(meta)], skipped=[])
+
+    def _import_dir(self, dirpath):
+        try:
+            metas = dicom_io.scan_folder(dirpath)
+        except Exception as e:  # noqa: BLE001
+            QMessageBox.critical(self, "导入失败", str(e))
+            return
+        ok = [m for m in metas if m.ok]
+        skipped = [m for m in metas if not m.ok]
+        if not ok:
+            QMessageBox.warning(self, "没有可用病例",
+                                f"在所选文件夹中未找到可读取的 DICOM。\n"
+                                f"跳过 {len(skipped)} 个文件。")
+            return
+        self._set_cases([CaseModel.from_dicom(m) for m in ok], skipped)
+
+    def _set_cases(self, cases, skipped):
+        """替换当前病例列表并选中第一例。"""
+        self.cases = cases
+        self.current_index = -1
+        self.case_panel.set_cases(self.cases)
+        self.case_panel.select(0)
+
+        msg = f"已导入 {len(cases)} 例"
+        if skipped:
+            msg += f"，跳过 {len(skipped)} 个无法读取的文件"
+        self.statusBar().showMessage(msg, 6000)
+
+        # 缺失 PixelSpacing 的（可载入但不可算面积）单独提示（FR-1.4）
+        missing = [c for c in cases if c.px_mm <= 0]
+        detail = []
+        if skipped:
+            detail.append(f"跳过 {len(skipped)} 个无法读取的文件（如：{skipped[0].error}）")
+        if missing:
+            detail.append(f"另有 {len(missing)} 例缺少 PixelSpacing，无法计算面积")
+        if detail:
+            QMessageBox.information(self, "导入完成", msg + "\n\n" + "\n".join(detail))
 
     # ==================== 帮助 ====================
     def _on_help(self):
@@ -377,7 +449,7 @@ class MainWindow(QMainWindow):
             "对标 Slice-O-Matic 的腹部CT体成分面积分析工具。<br>"
             "自动分割算法：v3 阈值几何法（黄=皮下脂肪 / 红=内脏脂肪 / 蓝=骨骼肌）。<br><br>"
             f"<b>v3 参数</b><br>{params}<br><br>"
-            "<i>当前为界面原型：示例数据来自匿名化的真实切片。</i>"))
+            "<i>启动默认载入内置示例数据；可「导入 DICOM」载入真实切片。</i>"))
 
     # ==================== 杂项 ====================
     def _toast(self, text):

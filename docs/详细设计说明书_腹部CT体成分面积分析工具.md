@@ -197,24 +197,28 @@ areas() -> dict                   # SAT/VAT/SMA/fat/vat_sat/muscle_hu/body（见
 - 缩放范围：`ZOOM_MIN=0.02, ZOOM_MAX=40.0`（屏幕像素/mm）。
 - v3 参数表 `V3_PARAMS`（见附录 A）。
 
-### 4.2 `app/dicom_io.py` ⬜
+### 4.2 `app/dicom_io.py` ✅
 ```
 @dataclass DicomMeta: path, patient_id, sex, age, protocol, series_desc,
-                      slice_thickness, pixel_spacing, window_center/width,
-                      slope, intercept, manufacturer, contrast
-scan_folder(dir) -> list[DicomMeta]        # 递归识别 .dcm；坏文件跳过并记录
-read_hu(path) -> (hu float32, px_mm, DicomMeta)   # 按需调用
+                      slice_thickness, px_mm, window_center/width,
+                      rows/cols, slope, intercept, manufacturer, contrast, error
+scan_folder(dir, recursive=True) -> list[DicomMeta]   # 只读头；坏文件带 error 保留
+scan_file(path) -> DicomMeta
+read_hu(path) -> (hu float32, px_mm, DicomMeta)        # 按需读像素算 HU
 ```
-流程：遍历 → 逐文件 `dcmread(stop_before_pixels=True)` → 抽取字段 → 失败则加入 `errors` 列表并继续。
-异常：无 `PixelSpacing` → 标记不可算面积；非 DICOM → 跳过。
+流程：`os.walk` 遍历 → 逐文件 `dcmread(stop_before_pixels=True)` → 抽字段 → 失败则记 `error` 继续。
+`ok`=可载入；`can_area`=有 PixelSpacing 可算面积。非 DICOM 在 `scan_folder` 中剔除，其余坏文件保留。
+性别已转中文（男/女/其他）；多层/多帧像素在 `read_hu` 中拒绝并提示。
 
-### 4.3 `app/segmentation.py` 🟡
-职责：v3 阈值几何分割，**从 `_threshold_v3.py` 抽出为纯函数**（不含文件 IO）。
+### 4.3 `app/segmentation.py` ✅
+职责：v3 阈值几何分割，**纯函数，不含文件 IO**（从 `_threshold_v3.py` 抽出）。
 ```
-segment_v3(hu: np.ndarray, px_mm: float, params: dict) -> uint8 label
+default_params() -> dict
+body_mask(hu, params=None) -> bool              # 身体掩膜（导入时即算，供"身体面积"）
+segment_v3(hu, px_mm, params=None) -> (uint8 label, bool body)
 ```
-逐步算法见 §5.1。当前原型里该算法位于构建脚本 `_make_sample.py`（构建期烘焙示例数据），
-下一轮抽到 `app/segmentation.py` 并供界面"一键自动分割"调用（单例同步、批量走 `workers`）。
+参数字典见 `constants.V3_DEFAULTS`（需求附录 A）。逐步算法见 §5.1。
+界面"一键自动分割"调 `segment_v3`（单例同步）；批量走 `workers`（WP-4，待建）。
 
 ### 4.4 `app/render.py` ✅
 职责：把 HU 与标签图转成 Qt 可绘制缓冲；是"屏幕叠加"与"导出 PNG"颜色的唯一来源。
@@ -500,9 +504,9 @@ VAT/SAT  = nVAT/nSAT   (nSAT=0 → None)
 
 | 需求 | 设计落点 | 原型现状 |
 |---|---|---|
-| FR-1 数据导入 | `dicom_io` | ⬜（原型用内置示例） |
+| FR-1 数据导入 | `dicom_io` | ✅（文件夹/单文件；启动仍默认内置示例） |
 | FR-2 显示与浏览（WW/WL/缩放/平移/状态栏） | `image_view` | ✅（层切换 FR-2.5 预留） |
-| FR-3 自动分割（v3 / 参数可调 / ≤2s / 叠加 / 批量） | `segmentation` + `render` + `workers` | 🟡 算法已实现待接入；批量 ⬜ |
+| FR-3 自动分割（v3 / 参数可调 / ≤2s / 叠加 / 批量） | `segmentation` + `render` + `workers` | ✅ 单例一键；批量 ⬜ |
 | FR-4 交互微调（互斥/区域生长/画笔/橡皮/撤销/实时/视图辅助） | `editing`+`image_view`+`undo`+`panels` | ✅（软边笔刷 ⬜） |
 | FR-5 面积与派生指标（自动/人工区分/重置） | `CaseModel.areas`+`RightPanel` | ✅ |
 | FR-6 结果导出（CSV/xlsx/PNG/NRRD） | `export` | ⬜ |
@@ -514,16 +518,17 @@ VAT/SAT  = nVAT/nSAT   (nSAT=0 → None)
 
 ## 12. 原型 → 成品 演进路线（差距清单）
 
-1. **抽算法**：把 `_make_sample.py` 内联的 v3 抽到 `app/segmentation.py::segment_v3`（纯函数）。
-2. **接数据**：新建 `app/dicom_io.py`；`CasePanel` 的[导入]接真实 `scan_folder` + 按需 `read_hu`。
-3. **接一键分割**：`MainWindow._on_auto` 调 `segment_v3`，写 `label/auto_label`，刷新（单例同步）。
-4. **批量并发**：新增 `app/workers.py`，批量分割带进度条，结果按 `case_id` 回填。
-5. **导出**：新增 `app/export.py`（utf-8-sig CSV、PNG 图例、NRRD 可选）。
-6. **工程**：新增 `app/project.py`（zip+npz），加"未保存提示"。
-7. **设置**：参数/输出目录/颜色方案的设置对话框 + 恢复默认。
-8. **打磨**：软边笔刷、视图辅助增强、错误处理、600+ 例性能回归；最后 PyInstaller 打包。
+1. **抽算法** ✅：v3 已抽到 `app/segmentation.py::segment_v3`（纯函数）；`_make_sample.py` 改为引用它。
+2. **接数据** ✅：`app/dicom_io.py` 已建；[导入]接真实 `scan_folder` + 按需 `read_hu`（懒加载）。
+3. **接一键分割** ✅：`MainWindow._on_auto` 调 `segment_v3`，写 `label/auto_label/body`，刷新（单例同步）。
+4. **批量并发** ⬜：新增 `app/workers.py`，批量分割带进度条，结果按 `case_id` 回填。
+5. **导出** ⬜：新增 `app/export.py`（utf-8-sig CSV、PNG 图例、NRRD 可选）。
+6. **工程** ⬜：新增 `app/project.py`（zip+npz），加"未保存提示"。
+7. **设置** ⬜：参数/输出目录/颜色方案的设置对话框 + 恢复默认。
+8. **打磨** ⬜：软边笔刷、视图辅助增强、错误处理、600+ 例性能回归；最后 PyInstaller 打包。
 
-> 原型已把 §1 原则中的"数据模型/渲染/编辑/视图"打牢，第 2–7 步均为**新增文件 + 接线**，不改动已验证的核心。
+> 原型已把 §1 原则中的"数据模型/渲染/编辑/视图"打牢，第 4–7 步均为**新增文件 + 接线**，不改动已验证的核心。
+> §10 待补：`dicom_io`/`segmentation` 的异常处理与 `CaseModel` 懒加载已随 WP-1~3 落地。
 
 ---
 

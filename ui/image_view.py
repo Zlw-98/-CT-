@@ -65,6 +65,8 @@ class ImageView(QWidget):
     # ==================== 数据接口 ====================
     def set_case(self, case):
         self.case = case
+        if case is not None:
+            case.ensure_loaded()
         self.rebuild_gray()
         self.rebuild_overlay()
         self._autofit = True
