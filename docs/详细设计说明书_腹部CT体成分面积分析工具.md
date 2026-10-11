@@ -292,16 +292,20 @@ set_grow_radius / set_grow_conn / set_grow_restrict`。
 - 编辑回调：`_on_visibility/_on_opacity/_on_lock/_on_clear/_on_reset/_on_undo/_on_redo/_on_alpha/_set_only`。
 - 菜单（§6.2）与快捷键（附录 B）。原型中 `_on_import/_on_auto` 弹"原型演示"提示（真实管线未接）。
 
-### 4.10 `app/workers.py` ⬜
+### 4.10 `app/workers.py` ✅
 ```
 class SegmentWorker(QObject):
-    progress = Signal(int,int,str)         # done,total,case_id
-    finished_one = Signal(str, object)     # case_id, uint8 label
-    finished_all = Signal(int,int)         # ok,failed
-    def __init__(self, jobs): ...          # jobs: [(case_id, hu, px_mm, params)]
+    progress   = Signal(int,int,str)            # done,total,key
+    one_done   = Signal(str, object, object, object)  # key, hu, label, body
+    one_failed = Signal(str, str)               # key, error
+    all_done   = Signal(int,int)                # ok,failed
+    def __init__(self, jobs): ...               # jobs: [(key, path)]
     @Slot() def run(self): ...
 ```
-约束：worker 不触碰任何控件；用 `Signal(object)` 传 numpy；提供 `cancel()`；结果凭 `case_id` 回填。
+约束：worker 不触碰任何控件；用 `Signal(object)` 传 numpy；结果凭 `key`（文件路径）回填。
+取消：主线程 `QThread.requestInterruption()`，worker 循环内 `isInterruptionRequested()` 检查。
+主线程：`QProgressDialog`（模态、可取消）→ 结果经 `CaseModel.apply_segmentation` 回填；
+无路径的内置示例就近在主线程分割。实测 69 例约 17s、界面不冻结。
 
 ### 4.11 `app/export.py` ⬜
 `export_csv(rows, path)`（utf-8-sig）、`export_overlay_png(case, path)`、`export_mask_nrrd(case, path)`。
@@ -506,7 +510,7 @@ VAT/SAT  = nVAT/nSAT   (nSAT=0 → None)
 |---|---|---|
 | FR-1 数据导入 | `dicom_io` | ✅（文件夹/单文件；启动仍默认内置示例） |
 | FR-2 显示与浏览（WW/WL/缩放/平移/状态栏） | `image_view` | ✅（层切换 FR-2.5 预留） |
-| FR-3 自动分割（v3 / 参数可调 / ≤2s / 叠加 / 批量） | `segmentation` + `render` + `workers` | ✅ 单例一键；批量 ⬜ |
+| FR-3 自动分割（v3 / 参数可调 / ≤2s / 叠加 / 批量） | `segmentation` + `render` + `workers` | ✅ 单例一键 + 批量后台（69 例≈17s） |
 | FR-4 交互微调（互斥/区域生长/画笔/橡皮/撤销/实时/视图辅助） | `editing`+`image_view`+`undo`+`panels` | ✅（软边笔刷 ⬜） |
 | FR-5 面积与派生指标（自动/人工区分/重置） | `CaseModel.areas`+`RightPanel` | ✅ |
 | FR-6 结果导出（CSV/xlsx/PNG/NRRD） | `export` | ⬜ |
@@ -521,7 +525,7 @@ VAT/SAT  = nVAT/nSAT   (nSAT=0 → None)
 1. **抽算法** ✅：v3 已抽到 `app/segmentation.py::segment_v3`（纯函数）；`_make_sample.py` 改为引用它。
 2. **接数据** ✅：`app/dicom_io.py` 已建；[导入]接真实 `scan_folder` + 按需 `read_hu`（懒加载）。
 3. **接一键分割** ✅：`MainWindow._on_auto` 调 `segment_v3`，写 `label/auto_label/body`，刷新（单例同步）。
-4. **批量并发** ⬜：新增 `app/workers.py`，批量分割带进度条，结果按 `case_id` 回填。
+4. **批量并发** ✅：`app/workers.py` 已建，批量分割带进度条与取消，结果按路径回填。
 5. **导出** ⬜：新增 `app/export.py`（utf-8-sig CSV、PNG 图例、NRRD 可选）。
 6. **工程** ⬜：新增 `app/project.py`（zip+npz），加"未保存提示"。
 7. **设置** ⬜：参数/输出目录/颜色方案的设置对话框 + 恢复默认。
@@ -549,7 +553,8 @@ VAT/SAT  = nVAT/nSAT   (nSAT=0 → None)
 | Ctrl+O / Ctrl+Q | 导入 / 退出 |
 | Ctrl+Z / Ctrl+Y（或 Ctrl+Shift+Z） | 撤销 / 重做 |
 | Ctrl+0 / Ctrl+= / Ctrl+- | 适应窗口 / 放大 / 缩小 |
-| F5 | 一键自动分割 |
+| F5 | 一键自动分割（当前例） |
+| F6 | 批量自动分割（全部病例） |
 | 滚轮 / 中·右键拖拽 | 缩放 / 平移 |
 
 ## 附录 C：文件格式示例

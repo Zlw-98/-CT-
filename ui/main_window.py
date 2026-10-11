@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """主窗口：菜单栏 + 三栏布局 + 底部编辑工具条 + 状态栏，以及各控件信号连线。"""
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QThread
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QFrame,
-    QLabel, QMessageBox, QFileDialog, QApplication,
+    QLabel, QMessageBox, QFileDialog, QApplication, QProgressDialog,
 )
 
 from app import constants as C
@@ -12,6 +12,7 @@ from app import dicom_io
 from app import segmentation
 from app.case_model import CaseModel
 from app.sample_data import load_sample_cases
+from app.workers import SegmentWorker
 from ui.image_view import ImageView
 from ui.panels import CasePanel, RightPanel, EditToolbar
 
@@ -33,6 +34,7 @@ class MainWindow(QMainWindow):
         self.resize(1380, 880)
         self.cases = []
         self.current_index = -1
+        self._batch = None
 
         try:
             self.cases = load_sample_cases()
@@ -153,6 +155,10 @@ class MainWindow(QMainWindow):
         a = QAction("一键自动分割", self)
         a.setShortcut("F5")
         a.triggered.connect(self._on_auto)
+        m_seg.addAction(a)
+        a = QAction("批量自动分割（全部病例）", self)
+        a.setShortcut("F6")
+        a.triggered.connect(self._on_batch)
         m_seg.addAction(a)
         a = QAction("重置为自动结果", self)
         a.triggered.connect(self._on_reset)
@@ -355,6 +361,90 @@ class MainWindow(QMainWindow):
         self.image.update()
         self._refresh()
         self.statusBar().showMessage("已完成 v3 自动分割", 3000)
+
+    def _on_batch(self):
+        """批量自动分割全部病例（真实 DICOM 走后台线程，内置示例就地处理）。"""
+        if not self.cases:
+            return
+        if getattr(self, "_batch", None) is not None:
+            self.statusBar().showMessage("批量分割正在进行中…", 2000)
+            return
+
+        n_ok = n_fail = 0
+        # 无源文件路径的（内置示例）已在内存中，直接就地分割
+        path_jobs = []
+        for c in self.cases:
+            path = c.meta.get("path")
+            if path:
+                path_jobs.append((path, path))
+                continue
+            try:
+                c.ensure_loaded()
+                if c.px_mm <= 0:
+                    raise ValueError("缺少 PixelSpacing")
+                label, body = segmentation.segment_v3(c.hu, c.px_mm)
+                c.apply_segmentation(c.hu, label, body)
+                n_ok += 1
+            except Exception:  # noqa: BLE001
+                n_fail += 1
+
+        if path_jobs:
+            self._run_batch_worker(path_jobs, n_ok, n_fail)
+        else:
+            self._after_batch(n_ok, n_fail)
+
+    def _run_batch_worker(self, path_jobs, n_ok, n_fail):
+        by_path = {c.meta.get("path"): c for c in self.cases if c.meta.get("path")}
+
+        dlg = QProgressDialog("正在批量自动分割…", "取消", 0, len(path_jobs), self)
+        dlg.setWindowTitle("批量自动分割")
+        dlg.setWindowModality(Qt.WindowModality.WindowModal)
+        dlg.setMinimumDuration(0)
+        dlg.setValue(0)
+
+        thread = QThread(self)
+        worker = SegmentWorker(path_jobs)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        self._batch = (thread, worker, dlg)
+        result = {"ok": 0, "fail": 0}
+
+        def on_one(key, hu, label, body):
+            c = by_path.get(key)
+            if c is None:
+                return
+            c.apply_segmentation(hu, label, body)
+            if self.current_case() is c:
+                self.image.rebuild_overlay()
+                self.image.update()
+                self._refresh()
+
+        def on_progress(done, total, _key):
+            dlg.setValue(done)
+
+        def on_done(ok, failed):
+            result["ok"], result["fail"] = ok, failed
+            thread.quit()
+
+        worker.one_done.connect(on_one)
+        worker.progress.connect(on_progress)
+        worker.all_done.connect(on_done)
+        dlg.canceled.connect(thread.requestInterruption)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(
+            lambda: self._after_batch(n_ok + result["ok"], n_fail + result["fail"], dlg))
+        thread.start()
+
+    def _after_batch(self, n_ok, n_fail, dlg=None):
+        if dlg is not None:
+            dlg.close()
+        self._batch = None
+        self.image.rebuild_overlay()
+        self.image.update()
+        self._refresh()
+        self.statusBar().showMessage(
+            f"批量分割完成：成功 {n_ok}，失败 {n_fail}", 6000)
 
     def _on_reset(self):
         case = self.current_case()

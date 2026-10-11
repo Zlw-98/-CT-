@@ -83,6 +83,15 @@ class CaseModel:
     def loaded(self) -> bool:
         return self._loaded
 
+    def apply_segmentation(self, hu, label, body):
+        """用于批量分割回填：一次性写入 hu/body/auto_label/label 并清空撤销栈。"""
+        self.hu = np.ascontiguousarray(hu, dtype=np.float32)
+        self.body = body
+        self.auto_label = np.ascontiguousarray(label, dtype=np.uint8).copy()
+        self.label = self.auto_label.copy()
+        self._loaded = True
+        self.undo.reset()
+
     # ---------- 基本信息 ----------
     @property
     def name(self) -> str:
