@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-title 腹部CT体成分分析工具 · 原型
+title 腹部CT体成分面积分析工具
 cd /d "%~dp0"
 
 rem ---- 运行环境（WorkBuddy 托管 venv，已装 PySide6/pydicom/numpy/scipy）----
