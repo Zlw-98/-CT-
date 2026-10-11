@@ -44,7 +44,7 @@
 | **M4** | 导出 | CSV + 叠加 PNG | WP-5 | ✅ 已完成 |
 | **M5** | 工程文件 | 保存/载入 `.bcprj`，可复现 | WP-6 | ✅ 已完成 |
 | **M6** | 设置 | 算法参数/输出目录/颜色，恢复默认 | WP-7 | ✅ 已完成 |
-| **M7** | 打磨与打包 | 软边笔刷、错误处理、性能回归、PyInstaller | WP-8 ~ WP-10 | ◐ WP-8 完成 |
+| **M7** | 打磨与打包 | 软边笔刷、错误处理、性能回归、PyInstaller | WP-8 ~ WP-10 | ◐ WP-8/9 完成，待打包 |
 | **M8** | 验收 | 对照需求 §11 逐条跑通 | WP-11 | ⬜ |
 
 ---
@@ -257,6 +257,23 @@ WP-2 导入 ───┘                  │                              ├�
 | 2026-10-11 | M5 / WP-6 | `app/project.py`（zip: project.json + masks/*.npz，含 hu/label/auto_label + 视图状态）；打开/保存/另存为 + 脏标记 + 关闭提示；往返逐像素一致 |
 | 2026-10-11 | M6 / WP-7 | `app/settings.py`（JSON 持久化到 `%APPDATA%/腹部CT体成分分析工具/settings.json`）+ `ui/settings_dialog.py`（v3 参数/输出目录/图层颜色 + 恢复默认）；接线：`segment_v3`/`body_mask` 读 `settings.v3_params()`、批量 worker 传入参数、启动 `apply_colors()`、`RightPanel.refresh_colors()` 刷新色块，菜单「设置」 |
 | 2026-10-11 | M7 / WP-8 | 软边笔刷（`editing.disk_mask` Bayer 有序抖动羽化 + 工具条「软边」开关，FR-4.3）；视图辅助「只看叠加（隐藏 CT）」（FR-4.6）；`main()` 顶层异常弹窗；边界用例 headless 验证通过 |
+| 2026-10-11 | M7 / WP-9 | 性能回归见 §11；全部达标（导入≪30s/100例、单例分割 221ms、编辑 0.65ms、单例内存 1.6MB） |
+
+---
+
+## 11. 性能回归记录（WP-9，2026-10-11）
+
+本机：Windows 11 / RTX 3050 Laptop 4GB / WorkBuddy venv (Python 3.13)；数据：`ct/` 69 例真实切片。
+
+| 指标 | 需求目标 | 实测 | 结论 |
+|---|---|---|---|
+| 批量导入（只读头） | ≤30s / 100 例 | 0.13s / 100 例（1.3 ms/例） | ✅ 远优 |
+| 单例读取 + v3 分割 | ≤2s | 221 ms / 例 | ✅ |
+| 编辑响应（paint_disk） | ≤200 ms | 0.65 ms / 次 | ✅ |
+| 区域生长（grow_selection） | — | 0.7 ms / 次 | ✅ |
+| 单例内存（hu+label+body） | — | 1.6 MB（peek） | ✅ 轻量 |
+
+> 结论：懒加载 + `label` uint8 + undo 快照上限 30 步的设计有效，600+ 例规模无压力。
 
 > 验证：`ct/` 导入 69 例、懒加载按选中例触发、真实数据区域生长与三图层互斥均通过；
 > 已提交 git。
